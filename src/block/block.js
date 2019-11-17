@@ -28,13 +28,16 @@ const { registerBlockType } = wp.blocks; // Import registerBlockType() from wp.b
 registerBlockType( 'cgb/block-ascii-tree', {
 	// Block name. Block names must be string that contains a namespace prefix. Example: my-plugin/my-custom-block.
 	title: __( 'ascii-tree - CGB Block' ), // Block title.
-	icon: 'shield', // Block icon from Dashicons → https://developer.wordpress.org/resource/dashicons/.
-	category: 'common', // Block category — Group blocks together based on common traits E.g. common, formatting, layout widgets, embed.
+	icon: 'category', // Block icon from Dashicons → https://developer.wordpress.org/resource/dashicons/.
+	category: 'formatting', // Block category — Group blocks together based on common traits E.g. common, formatting, layout widgets, embed.
 	keywords: [
 		__( 'ascii-tree — CGB Block' ),
 		__( 'CGB Example' ),
 		__( 'create-guten-block' ),
 	],
+	attributes: {
+		content: {type: 'string'}
+	},
 
 	/**
 	 * The edit function describes the structure of your block in the context of the editor.
@@ -49,20 +52,13 @@ registerBlockType( 'cgb/block-ascii-tree', {
 	 */
 	edit: ( props ) => {
 		// Creates a <p class='wp-block-cgb-block-ascii-tree'></p>.
+		function updateContent(event){
+			props.setAttributes({content: event.target.value})
+		}
 		return (
 			<div className={ props.className }>
-				<p>— Hello from the backend.</p>
-				<p>
-					CGB BLOCK: <code>ascii-tree</code> is a new Gutenberg block
-				</p>
-				<p>
-					It was created via{ ' ' }
-					<code>
-						<a href="https://github.com/ahmadawais/create-guten-block">
-							create-guten-block
-						</a>
-					</code>.
-				</p>
+				<h3> Type your tree here </h3>
+				<textarea type="text" value={props.attributes.content} onChange={updateContent}/>
 			</div>
 		);
 	},
@@ -81,19 +77,202 @@ registerBlockType( 'cgb/block-ascii-tree', {
 	save: ( props ) => {
 		return (
 			<div className={ props.className }>
-				<p>— Hello from the frontend.</p>
 				<p>
-					CGB BLOCK: <code>ascii-tree</code> is a new Gutenberg block.
-				</p>
-				<p>
-					It was created via{ ' ' }
-					<code>
-						<a href="https://github.com/ahmadawais/create-guten-block">
-							create-guten-block
-						</a>
-					</code>.
+					{generate(props.attributes.content)}
 				</p>
 			</div>
 		);
 	},
 } );
+
+
+/*
+The following section is for custom functions needed for this block. Due to Javascript function hoisting,
+these will be defined in the global scope and avaialble in the edit and save functions above.
+
+The code used here is largely copied from the ascii-tree plugin for atom see here: https://github.com/ramtinsoltani/atom-ascii-tree
+*/
+function generate(selection) {
+
+    if ( ! selection || ! selection.trim() ) return;
+
+    let result = '';
+    let characters = {
+
+      child: '├── ',
+      lastChild: '└── ',
+      indentWithLine: '│   ',
+      indent: '    '
+
+	};
+
+	let object = parseToObject(selection);	
+
+    let generated = [];
+
+    buildLinesFromObject(object, generated, characters);
+	return result;
+
+    return generated.join('\n');
+
+	/*
+    editor.insertText(result);
+    editor.selectToBeginningOfLine();
+	editor.selectUp(result.split('\n').length - 1);
+	*/
+
+}
+
+function parseToObject(selection) {
+	let object = {};
+    let lastParents = []; // To keep track of the last parents known on each level
+    let text = selection
+                 .replace(/\r\n/g, '\n')
+                 .replace(/\n+/g, '\n')
+                 .replace(/^\n/, '')
+                 .replace(/\n$/, '')
+                 .split('\n');
+
+    // Read each line
+    text.forEach((line, index) => {
+
+      // If line is root (multiple roots are valid)
+      if ( line.trim().substr(0, 3) !== '+--' ) {
+
+        object[index + ':' + line.trim()] = {};
+        lastParents[0] = index + ':' + line.trim();
+
+      }
+      else {
+
+        let currentLevel = (line.indexOf('+--') / 4) + 1;
+        let currentNode = index + ':' + line.replace('+--', '').trim();
+        let parentIndex = currentLevel - 1;
+        let ref = object;
+
+        // Add the current node to the right parent
+        for ( let lastParentIndex in lastParents ) {
+
+          ref = ref[lastParents[lastParentIndex]];
+
+          // If parent reached (note that lastParentIndex is a string)
+          if ( lastParentIndex == parentIndex ) {
+
+            if ( ! ref ) return;
+
+            ref[currentNode] = {};
+
+            break;
+
+          }
+
+        }
+
+        // Determine if current node is a parent itself
+        if ( text[index + 1] ) {
+
+          let possibleParentIndicator = text[index + 1].substr(line.indexOf('+--') + 4, 3);
+
+          if ( possibleParentIndicator === '+--' ) lastParents[currentLevel] = currentNode;
+
+        }
+
+      }
+
+    });
+
+    return object;
+}
+
+function buildLinesFromObject(object, generated, characters, prefix, level) {
+	// Default values
+    prefix = prefix || '';
+	level = level || 0;
+	displayRootChar = false;
+
+    let nodes = Object.keys(object);
+
+    for ( let index in nodes ) {
+
+      let lastChild = ! nodes[parseInt(index) + 1];
+
+      // Generate a new line with current node prefixed
+      generated.push(prefix +
+        (! level && displayRootChar ? '.' : '') +
+        (level ? (lastChild ? characters.lastChild : characters.child) : '') +
+        nodes[index].replace(/^\d+:/, ''));
+
+      let children = Object.keys(object[nodes[index]]);
+
+      if ( children.length ) {
+
+        let childPrefix = '';
+
+        // If current node is the last child, prefix it's children differently
+        if ( level ) {
+
+          childPrefix += lastChild ?
+                          prefix + characters.indent :
+                          prefix + characters.indentWithLine;
+        }
+
+        // Generate lines from child
+        buildLinesFromObject(object[nodes[index]], generated, characters, childPrefix, level + 1);
+
+      }
+
+    }
+
+}
+
+/*
+
+  __reverseGeneratedTree(selection, characters) {
+
+    let lines = selection
+                 .replace(/\r\n/g, '\n')
+                 .replace(/\n+/g, '\n')
+                 .replace(/^\n/, '')
+                 .replace(/\n$/, '')
+                 .split('\n');
+
+    let indentRegex = new RegExp(characters.indent, 'g');
+    let indentWithLineRegex = new RegExp(characters.indentWithLine, 'g');
+
+    lines.forEach((line, index) => {
+
+      if ( line.indexOf(characters.child) !== -1 || line.indexOf(characters.lastChild) !== -1 ) {
+
+        lines[index] = line
+                 .replace(characters.child, '+-- ')
+                 .replace(characters.lastChild, '+-- ')
+                 .replace(indentRegex, '    ')
+                 .replace(indentWithLineRegex, '    ');
+
+      }
+      else if ( atom.config.get('ascii-tree.characters.rootPrefix') ) {
+
+        lines[index] = line.replace(/^\./, '');
+
+      }
+
+    });
+
+    return lines.join('\n');
+
+  },
+
+  __interpretAsObject(selection) {
+
+    
+
+  },
+
+  __buildLinesFromObject(object, generated, characters, prefix, level) {
+
+    
+
+  }
+
+};
+*/
