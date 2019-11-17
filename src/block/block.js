@@ -9,6 +9,9 @@
 import './editor.scss';
 import './style.scss';
 
+// Import React components for wp
+const { RichText } = wp.blockEditor;
+
 const { __ } = wp.i18n; // Import __() from wp.i18n
 const { registerBlockType } = wp.blocks; // Import registerBlockType() from wp.blocks
 
@@ -52,14 +55,19 @@ registerBlockType( 'cgb/block-ascii-tree', {
 	 */
 	edit: ( props ) => {
 		// Creates a <p class='wp-block-cgb-block-ascii-tree'></p>.
-		function updateContent(event){
-			props.setAttributes({content: event.target.value})
+		function updateContent(eventContent){
+			props.setAttributes({content: eventContent})
 		}
 		return (
-			<div className={ props.className }>
-				<h3> Type your tree here </h3>
-				<textarea type="text" value={props.attributes.content} onChange={updateContent}/>
-			</div>
+      <RichText
+        tagName="code"
+        onChange={updateContent} 
+        className={ props.className }
+        placeholder="Type tree here"
+        keepPlaceholderOnFocus={true}
+        value={props.attributes.content}
+      />
+      
 		);
 	},
 
@@ -77,9 +85,9 @@ registerBlockType( 'cgb/block-ascii-tree', {
 	save: ( props ) => {
 		return (
 			<div className={ props.className }>
-				<p>
+				<textarea>
 					{generate(props.attributes.content)}
-				</p>
+				</textarea>
 			</div>
 		);
 	},
@@ -108,120 +116,114 @@ function generate(selection) {
 
 	let object = parseToObject(selection);	
 
-    let generated = [];
+  let generated = [];
 
-    buildLinesFromObject(object, generated, characters);
-	return result;
+  buildLinesFromObject(object, generated, characters);
 
-    return generated.join('\n');
-
-	/*
-    editor.insertText(result);
-    editor.selectToBeginningOfLine();
-	editor.selectUp(result.split('\n').length - 1);
-	*/
+  return generated.join('\n');
 
 }
 
 function parseToObject(selection) {
 	let object = {};
-    let lastParents = []; // To keep track of the last parents known on each level
-    let text = selection
-                 .replace(/\r\n/g, '\n')
-                 .replace(/\n+/g, '\n')
-                 .replace(/^\n/, '')
-                 .replace(/\n$/, '')
-                 .split('\n');
+  let lastParents = []; // To keep track of the last parents known on each level
+  
+  let text = selection
+                .replace(/\r\n/g, '\n')
+                .replace(/\n+/g, '\n')
+                .replace(/^\n/, '')
+                .replace(/\n$/, '')
+                .split('\n');
 
-    // Read each line
-    text.forEach((line, index) => {
+  // Read each line
+  text.forEach((line, index) => {
 
-      // If line is root (multiple roots are valid)
-      if ( line.trim().substr(0, 3) !== '+--' ) {
+    // If line is root (multiple roots are valid)
+    if ( line.trim().substr(0, 3) !== '+--' ) {
 
-        object[index + ':' + line.trim()] = {};
-        lastParents[0] = index + ':' + line.trim();
+      object[index + ':' + line.trim()] = {};
+      lastParents[0] = index + ':' + line.trim();
 
-      }
-      else {
+    }
+    else {
 
-        let currentLevel = (line.indexOf('+--') / 4) + 1;
-        let currentNode = index + ':' + line.replace('+--', '').trim();
-        let parentIndex = currentLevel - 1;
-        let ref = object;
+      let currentLevel = (line.indexOf('+--') / 4) + 1;
+      let currentNode = index + ':' + line.replace('+--', '').trim();
+      let parentIndex = currentLevel - 1;
+      let ref = object;
 
-        // Add the current node to the right parent
-        for ( let lastParentIndex in lastParents ) {
+      // Add the current node to the right parent
+      for ( let lastParentIndex in lastParents ) {
 
-          ref = ref[lastParents[lastParentIndex]];
+        ref = ref[lastParents[lastParentIndex]];
 
-          // If parent reached (note that lastParentIndex is a string)
-          if ( lastParentIndex == parentIndex ) {
+        // If parent reached (note that lastParentIndex is a string)
+        if ( lastParentIndex == parentIndex ) {
 
-            if ( ! ref ) return;
+          if ( ! ref ) return;
 
-            ref[currentNode] = {};
+          ref[currentNode] = {};
 
-            break;
-
-          }
-
-        }
-
-        // Determine if current node is a parent itself
-        if ( text[index + 1] ) {
-
-          let possibleParentIndicator = text[index + 1].substr(line.indexOf('+--') + 4, 3);
-
-          if ( possibleParentIndicator === '+--' ) lastParents[currentLevel] = currentNode;
+          break;
 
         }
 
       }
 
-    });
+      // Determine if current node is a parent itself
+      if ( text[index + 1] ) {
 
-    return object;
-}
+        let possibleParentIndicator = text[index + 1].substr(line.indexOf('+--') + 4, 3);
 
-function buildLinesFromObject(object, generated, characters, prefix, level) {
-	// Default values
-    prefix = prefix || '';
-	level = level || 0;
-	displayRootChar = false;
-
-    let nodes = Object.keys(object);
-
-    for ( let index in nodes ) {
-
-      let lastChild = ! nodes[parseInt(index) + 1];
-
-      // Generate a new line with current node prefixed
-      generated.push(prefix +
-        (! level && displayRootChar ? '.' : '') +
-        (level ? (lastChild ? characters.lastChild : characters.child) : '') +
-        nodes[index].replace(/^\d+:/, ''));
-
-      let children = Object.keys(object[nodes[index]]);
-
-      if ( children.length ) {
-
-        let childPrefix = '';
-
-        // If current node is the last child, prefix it's children differently
-        if ( level ) {
-
-          childPrefix += lastChild ?
-                          prefix + characters.indent :
-                          prefix + characters.indentWithLine;
-        }
-
-        // Generate lines from child
-        buildLinesFromObject(object[nodes[index]], generated, characters, childPrefix, level + 1);
+        if ( possibleParentIndicator === '+--' ) lastParents[currentLevel] = currentNode;
 
       }
 
     }
+
+  });
+
+  return object;
+}
+
+function buildLinesFromObject(object, generated, characters, prefix, level) {
+	// Default values
+  prefix = prefix || '';
+	level = level || 0;
+	let displayRootChar = false;
+
+  let nodes = Object.keys(object);
+
+  for ( let index in nodes ) {
+
+    let lastChild = ! nodes[parseInt(index) + 1];
+
+    // Generate a new line with current node prefixed
+    generated.push(prefix +
+      (! level && displayRootChar ? '.' : '') +
+      (level ? (lastChild ? characters.lastChild : characters.child) : '') +
+      nodes[index].replace(/^\d+:/, ''));
+
+    let children = Object.keys(object[nodes[index]]);
+
+    if ( children.length ) {
+
+      let childPrefix = '';
+
+      // If current node is the last child, prefix it's children differently
+      if ( level ) {
+
+        childPrefix += lastChild ?
+                        prefix + characters.indent :
+                        prefix + characters.indentWithLine;
+      }
+
+      // Generate lines from child
+      buildLinesFromObject(object[nodes[index]], generated, characters, childPrefix, level + 1);
+
+    }
+
+  }
 
 }
 
