@@ -10,7 +10,8 @@ import './editor.scss';
 import './style.scss';
 
 // Import React components for wp
-const { RichText } = wp.blockEditor;
+const { PlainText } = wp.blockEditor;
+const { createRef } = wp.element;
 
 const { __ } = wp.i18n; // Import __() from wp.i18n
 const { registerBlockType } = wp.blocks; // Import registerBlockType() from wp.blocks
@@ -57,16 +58,30 @@ registerBlockType( 'cgb/block-ascii-tree', {
 		// Creates a <p class='wp-block-cgb-block-ascii-tree'></p>.
 		function updateContent(eventContent){
 			props.setAttributes({content: eventContent})
-		}
+    }
+
+    // Handle keypress and intercept tabs
+    function handleKeypress(event){
+      //event.target.style.cssText = "height:" + event.target.scrollHeight + "px";
+      if(event.keyCode==9 || event.which==9) {
+        event.preventDefault();
+        let s = event.target.selectionStart;
+        event.target.value = event.target.value.substring(0,s) + "    " + event.target.value.substring(s);
+        event.target.selectionEnd = s+4;
+      } 
+    }
+
 		return (
-      <RichText
-        tagName="code"
-        onChange={updateContent} 
+      
+      <PlainText
+        onChange={updateContent}
+        onKeyDown={handleKeypress}
         className={ props.className }
         placeholder="Type tree here"
         keepPlaceholderOnFocus={true}
         value={props.attributes.content}
-      />
+        />   
+
       
 		);
 	},
@@ -84,11 +99,11 @@ registerBlockType( 'cgb/block-ascii-tree', {
 	 */
 	save: ( props ) => {
 		return (
-			<div className={ props.className }>
-				<textarea>
-					{generate(props.attributes.content)}
-				</textarea>
-			</div>
+      <pre className={ props.className }>
+        <code>
+          {generate(props.attributes.content)}
+        </code>
+      </pre>
 		);
 	},
 } );
