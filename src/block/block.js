@@ -10,11 +10,17 @@ import './editor.scss';
 import './style.scss';
 
 // Import React components for wp
-const { PlainText } = wp.blockEditor;
-const { createRef } = wp.element;
+const { PlainText, InspectorControls } = wp.blockEditor;
+const { PanelBody, TextControl, ToggleControl } = wp.components;
 
 const { __ } = wp.i18n; // Import __() from wp.i18n
 const { registerBlockType } = wp.blocks; // Import registerBlockType() from wp.blocks
+
+// Default characters global so they can be accessed multiple times
+const childCharDefault = '├── ';
+const lastChildCharDefault = '└── ';
+const indentWithLineCharDefault = '│   ';
+const indentCharDefault = '    ';
 
 /**
  * Register: aa Gutenberg Block.
@@ -40,7 +46,12 @@ registerBlockType( 'cgb/block-ascii-tree', {
 		__( 'create-guten-block' ),
 	],
 	attributes: {
-		content: {type: 'string'}
+    content: {type: 'string'},
+    childChar: {type: 'string', default: childCharDefault},
+    lastChildChar: {type: 'string', default: lastChildCharDefault},
+    indentWithLineChar: {type: 'string', default: indentWithLineCharDefault},
+    indentChar: {type: 'string', default: indentCharDefault},
+    showRoot: {type: 'boolean', default: false}
 	},
 
 	/**
@@ -71,18 +82,81 @@ registerBlockType( 'cgb/block-ascii-tree', {
       } 
     }
 
-		return (
-      
-      <PlainText
-        onChange={updateContent}
-        onKeyDown={handleKeypress}
-        className={ props.className }
-        placeholder="Type tree here"
-        keepPlaceholderOnFocus={true}
-        value={props.attributes.content}
-        />   
+    // Handle changes to child character
+    function updateChildChar(eventContent) {
+      props.setAttributes({childChar: eventContent});
+    }
 
-      
+    // Check if the user left the field empty
+    function validateChildChar(event) {
+      if ( props.attributes.childChar == '' ) {
+        props.setAttributes({childChar: childCharDefault});
+      }
+    }
+
+    // Handle changes to last child character
+    function updateLastChildChar(eventContent) {
+      props.setAttributes({lastChildChar: eventContent});
+    }
+
+    // Check if the user left the field empty
+    function validateLastChildChar(event) {
+      if ( props.attributes.lastChildChar == '' ) {
+        props.setAttributes({lastChildChar: lastChildCharDefault});
+      }
+    }
+
+    // Handle changes to indent with line character
+    function updateIndentWithLineChar(eventContent) {
+      props.setAttributes({indentWithLineChar: eventContent});
+    }
+
+    // Check if the user left the field empty
+    function validateIndentWithLineChar(event) {
+      if ( props.attributes.indentWithLineChar == '' ) {
+        props.setAttributes({indentWithLineChar: indentWithLineCharDefault});
+      }
+    }
+
+    // Handle changes to child character
+    function updateIndentChar(eventContent) {
+      props.setAttributes({indentChar: eventContent});
+    }
+
+    // Check if the user left the field empty
+    function validateIndentChar(event) {
+      if ( props.attributes.indentChar == '' ) {
+        props.setAttributes({indentChar: indentCharDefault});
+      }
+    }
+
+    // Update show root toggle
+    function updateShowRoot(eventContent) {
+      props.setAttributes({showRoot: eventContent});
+    }
+    
+
+		return (
+      <div>
+        <InspectorControls>
+          <PanelBody title={ __('Character Settings')}>
+            <TextControl label="Child" value={props.attributes.childChar} onChange={updateChildChar} onBlur={validateChildChar}/>
+            <TextControl label="Last Child" value={props.attributes.lastChildChar} onChange={updateLastChildChar} onBlur={validateLastChildChar}/>
+            <TextControl label="Indent with Line" value={props.attributes.indentWithLineChar} onChange={updateIndentWithLineChar} onBlur={validateIndentWithLineChar}/>
+            <TextControl label="Indent" value={props.attributes.indentChar} onChange={updateIndentChar} onBlur={validateIndentChar}/>
+            <ToggleControl label="Add Root Prefix" checked={props.attributes.showRoot} onChange={updateShowRoot}/>
+          </PanelBody>
+        </InspectorControls>
+
+        <PlainText
+          onChange={updateContent}
+          onKeyDown={handleKeypress}
+          className={ props.className }
+          placeholder="Type tree here"
+          keepPlaceholderOnFocus={true}
+          value={props.attributes.content}
+        />
+      </div>      
 		);
 	},
 
@@ -101,7 +175,7 @@ registerBlockType( 'cgb/block-ascii-tree', {
 		return (
       <pre className={ props.className }>
         <code>
-          {generate(props.attributes.content)}
+          {generate(props.attributes)}
         </code>
       </pre>
 		);
@@ -115,25 +189,25 @@ these will be defined in the global scope and avaialble in the edit and save fun
 
 The code used here is largely copied from the ascii-tree plugin for atom see here: https://github.com/ramtinsoltani/atom-ascii-tree
 */
-function generate(selection) {
+function generate(attributes) {
+  let selection = attributes.content;
 
-    if ( ! selection || ! selection.trim() ) return;
+  if ( ! selection || ! selection.trim() ) return;
 
-    let result = '';
-    let characters = {
-
-      child: '├── ',
-      lastChild: '└── ',
-      indentWithLine: '│   ',
-      indent: '    '
-
-	};
+  let characters = {
+    child: attributes.childChar,
+    lastChild: attributes.lastChildChar,
+    indentWithLine: attributes.indentWithLineChar,
+    indent: attributes.indentChar
+  };
+  
+  let showRoot = attributes.showRoot;
 
 	let object = parseToObject(selection);	
 
   let generated = [];
 
-  buildLinesFromObject(object, generated, characters);
+  buildLinesFromObject(object, generated, characters, showRoot);
 
   return generated.join('\n');
 
@@ -201,11 +275,10 @@ function parseToObject(selection) {
   return object;
 }
 
-function buildLinesFromObject(object, generated, characters, prefix, level) {
+function buildLinesFromObject(object, generated, characters, showRoot, prefix, level) {
 	// Default values
   prefix = prefix || '';
 	level = level || 0;
-	let displayRootChar = false;
 
   let nodes = Object.keys(object);
 
@@ -215,7 +288,7 @@ function buildLinesFromObject(object, generated, characters, prefix, level) {
 
     // Generate a new line with current node prefixed
     generated.push(prefix +
-      (! level && displayRootChar ? '.' : '') +
+      (! level && showRoot ? '.' : '') +
       (level ? (lastChild ? characters.lastChild : characters.child) : '') +
       nodes[index].replace(/^\d+:/, ''));
 
@@ -234,7 +307,7 @@ function buildLinesFromObject(object, generated, characters, prefix, level) {
       }
 
       // Generate lines from child
-      buildLinesFromObject(object[nodes[index]], generated, characters, childPrefix, level + 1);
+      buildLinesFromObject(object[nodes[index]], generated, characters, showRoot, childPrefix, level + 1);
 
     }
 
